@@ -134,18 +134,19 @@ restart:
 		if(i%1000==0){
 			__u64 stats[4];
 			read_stats(skel, stats);
-			printf("local=%llu global=%llu batch=%llu cpus=%llu memory=%lf throttled=%s\n", stats[0], stats[1], stats[2], stats[3], memory, skel->bss->throttled ? "true" : "false");
+			printf("local=%llu global=%llu batch=%llu cpus=%llu memory=%lf throttled=%s\n",
+						  stats[0],   stats[1],  stats[2], stats[3],   memory,       skel->bss->throttled ? "true" : "false");
 			fflush(stdout);
 		}
 		memory = get_memory_from_csv("/tmp/memory.log", &last_byte);
 		if(memory > MEMORY_THRESHOLD){
-			history = 40;
+			history = 100;
 			skel->bss->throttled = throttled = true;
 		}else if(throttled){
 			if(history) history--;
 			else skel->bss->throttled = throttled = false;
 		}
-		usleep(500);
+		usleep(1000);
 	}
 
 	bpf_link__destroy(link);

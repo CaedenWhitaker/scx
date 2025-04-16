@@ -54,7 +54,7 @@ s32 BPF_STRUCT_OPS(jellybean_select_cpu, struct task_struct *p, s32 prev_cpu, u6
 	bool is_idle = false;
 	s32 cpu;
 	cpu = scx_bpf_select_cpu_dfl(p, prev_cpu, wake_flags, &is_idle);
-	if (is_idle && !(p->policy == SCHED_BATCH && throttled))
+	if (is_idle && !(p->policy == SCHED_BATCH))
 	{
 		stat_inc(0);
 		scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, 0);
