@@ -134,7 +134,7 @@ restart:
 		if(i%20==0){
 			__u64 stats[4];
 			read_stats(skel, stats);
-			printf("local=%llu global=%llu batches=%llu memory=%lf throttled=%s\n", stats[0], stats[1], stats[2], memory, skel->bss->throttled ? "true" : "false");
+			printf("local=%llu global=%llu batch=%llu cpus=%llu memory=%lf throttled=%s\n", stats[0], stats[1], stats[2], stats[3], memory, skel->bss->throttled ? "true" : "false");
 			fflush(stdout);
 		}
 		memory = get_memory_from_csv("/tmp/memory.log", &last_byte);
