@@ -131,7 +131,7 @@ restart:
 	ssize_t history = 0;
 
 	for (__u64 i=0; !exit_req && !UEI_EXITED(skel, uei); i++) {
-		if(i%20==0){
+		if(i%1000==0){
 			__u64 stats[4];
 			read_stats(skel, stats);
 			printf("local=%llu global=%llu batch=%llu cpus=%llu memory=%lf throttled=%s\n", stats[0], stats[1], stats[2], stats[3], memory, skel->bss->throttled ? "true" : "false");
@@ -145,7 +145,7 @@ restart:
 			if(history) history--;
 			else skel->bss->throttled = throttled = false;
 		}
-		usleep(50000);
+		usleep(500);
 	}
 
 	bpf_link__destroy(link);
