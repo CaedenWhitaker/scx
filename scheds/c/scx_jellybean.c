@@ -46,12 +46,12 @@ static void sigint_handler(int simple)
 static void read_stats(struct scx_jellybean *skel, __u64 *stats)
 {
 	int nr_cpus = libbpf_num_possible_cpus();
-	__u64 cnts[4][nr_cpus];
+	__u64 cnts[5][nr_cpus];
 	__u32 idx;
 
-	memset(stats, 0, sizeof(stats[0]) * 4);
+	memset(stats, 0, sizeof(stats[0]) * 5);
 
-	for (idx = 0; idx < 4; idx++) {
+	for (idx = 0; idx < 3; idx++) {
 		int ret, cpu;
 
 		ret = bpf_map_lookup_elem(bpf_map__fd(skel->maps.stats),
@@ -60,6 +60,16 @@ static void read_stats(struct scx_jellybean *skel, __u64 *stats)
 			continue;
 		for (cpu = 0; cpu < nr_cpus; cpu++)
 			stats[idx] += cnts[idx][cpu];
+	}
+	for (idx = 3; idx < 5; idx++) {
+		int ret, cpu;
+
+		ret = bpf_map_lookup_elem(bpf_map__fd(skel->maps.stats),
+					  &idx, cnts[idx]);
+		if (ret < 0)
+			continue;
+		for (cpu = 0; cpu < nr_cpus; cpu++)
+			stats[idx] |= (1ll<<cpu) * cnts[idx][cpu];
 	}
 }
 
@@ -79,13 +89,18 @@ double get_memory_from_csv(const char *path, ssize_t *last_byte) {
 			char *token;
 			char *saveptr;
 			token = strtok_r(line, ",", &saveptr);
+			int columns = 0;
 			while (token != NULL) {
 				result = strtod(token, NULL);
+				columns++;
 				if (errno == ERANGE) {
 					result = 0;
 					break;
 				}
 				token = strtok_r(NULL, ",", &saveptr);
+			}
+			if (columns != 29) {
+				result = 0;
 			}
 			free(line);
 		}
@@ -125,20 +140,26 @@ restart:
 	SCX_OPS_LOAD(skel, jellybean_ops, scx_jellybean, uei);
 	link = SCX_OPS_ATTACH(skel, jellybean_ops, scx_jellybean);
 	
+	const double inf = 1.0 / 0.0;
 	ssize_t last_byte = 0;
+	ssize_t prev_byte = -1;
 	double memory = 0;
 	bool throttled = false;
 	ssize_t history = 0;
 
 	for (__u64 i=0; !exit_req && !UEI_EXITED(skel, uei); i++) {
-		if(i%1000==0){
-			__u64 stats[4];
+		if(i%4==0){
+		// if(true){
+			__u64 stats[5];
 			read_stats(skel, stats);
-			printf("local=%llu global=%llu batch=%llu cpus=%llu memory=%lf throttled=%s\n",
-						  stats[0],   stats[1],  stats[2], stats[3],   memory,       skel->bss->throttled ? "true" : "false");
+			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx memory=%lf throttled=%s\n",
+						  stats[0],   stats[1],  stats[2], 	  stats[3],    stats[4],   memory,       skel->bss->throttled ? "true" : "false");
 			fflush(stdout);
 		}
-		memory = get_memory_from_csv("/tmp/memory.log", &last_byte);
+		double result = get_memory_from_csv("/tmp/memory.log", &last_byte);
+		if(prev_byte != last_byte && result != inf)
+			memory = result;
+		prev_byte = last_byte;
 		if(memory > MEMORY_THRESHOLD){
 			history = 100;
 			skel->bss->throttled = throttled = true;
@@ -146,7 +167,7 @@ restart:
 			if(history) history--;
 			else skel->bss->throttled = throttled = false;
 		}
-		usleep(1000);
+		usleep(5000);
 	}
 
 	bpf_link__destroy(link);

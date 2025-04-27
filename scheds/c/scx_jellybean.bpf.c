@@ -7,6 +7,7 @@
 #include <scx/common.bpf.h>
 
 #define SCHED_BATCH 3
+#define SCHED_DEADLINE 6
 
 char _license[] SEC("license") = "GPL";
 
@@ -26,7 +27,7 @@ struct
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(key_size, sizeof(u32));
 	__uint(value_size, sizeof(u64));
-	__uint(max_entries, 4);
+	__uint(max_entries, 5);
 } stats SEC(".maps");
 
 static void stat_inc(u32 idx)
@@ -43,11 +44,11 @@ static void stat_set(u32 idx, u32 val)
 		(*cnt_p) = val;
 }
 
-static u32 stat_get(u32 idx)
-{
-	u64 *cnt_p = bpf_map_lookup_elem(&stats, &idx);
-	return cnt_p ? *cnt_p : 0;
-}
+// static u32 stat_get(u32 idx)
+// {
+// 	u64 *cnt_p = bpf_map_lookup_elem(&stats, &idx);
+// 	return cnt_p ? *cnt_p : 0;
+// }
 
 s32 BPF_STRUCT_OPS(jellybean_select_cpu, struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 {
@@ -62,18 +63,18 @@ s32 BPF_STRUCT_OPS(jellybean_select_cpu, struct task_struct *p, s32 prev_cpu, u6
 	return cpu;
 }
 
-void BPF_STRUCT_OPS(jellybean_tick, struct task_struct *p)
-{
-	if (p->policy == SCHED_BATCH && throttled)
-	{
-		s32 cpu = scx_bpf_task_cpu(p);
-		scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
-	}
-}
+// void BPF_STRUCT_OPS(jellybean_tick, struct task_struct *p)
+// {
+// 	if (p->policy == SCHED_BATCH && throttled)
+// 	{
+// 		s32 cpu = scx_bpf_task_cpu(p);
+// 		scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
+// 	}
+// }
 
 void BPF_STRUCT_OPS(jellybean_enqueue, struct task_struct *p, u64 enq_flags)
 {
-	if (p->policy == SCHED_BATCH && throttled)
+	if (p->policy == SCHED_BATCH)
 	{
 		stat_inc(2);
 		scx_bpf_dsq_insert(p, BATCH_DSQ, SCX_SLICE_DFL, enq_flags);
@@ -112,6 +113,10 @@ void BPF_STRUCT_OPS(jellybean_running, struct task_struct *p)
 	{
 		stat_set(3, 1);
 	}
+	else
+	{
+		stat_set(4, 1);
+	}
 	if (fifo_sched)
 		return;
 	if (time_before(vtime_now, p->scx.dsq_vtime))
@@ -123,6 +128,10 @@ void BPF_STRUCT_OPS(jellybean_stopping, struct task_struct *p, bool runnable)
 	if (p->policy == SCHED_BATCH)
 	{
 		stat_set(3, 0);
+	}
+	else
+	{
+		stat_set(4, 0);
 	}
 	if (fifo_sched)
 		return;
@@ -142,7 +151,6 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(jellybean_init)
 		return ret;
 	if ((ret = scx_bpf_create_dsq(BATCH_DSQ, -1)) < 0)
 		return ret;
-	// cpu_limit = 4;
 	return ret;
 }
 
@@ -153,7 +161,7 @@ void BPF_STRUCT_OPS(jellybean_exit, struct scx_exit_info *ei)
 
 SCX_OPS_DEFINE(jellybean_ops,
 			   .select_cpu = (void *)jellybean_select_cpu,
-			   .tick = (void *)jellybean_tick,
+			//    .tick = (void *)jellybean_tick,
 			   .enqueue = (void *)jellybean_enqueue,
 			   .dispatch = (void *)jellybean_dispatch,
 			   .running = (void *)jellybean_running,
