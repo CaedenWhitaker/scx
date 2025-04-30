@@ -9,6 +9,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/sysinfo.h>
 #include <signal.h>
 #include <libgen.h>
 #include <bpf/bpf.h>
@@ -20,13 +21,14 @@ const char help_fmt[] =
 "\n"
 "See the top-level comment in .bpf.c for more details.\n"
 "\n"
-"Usage: %s [-f] [-v]\n"
+"Usage: %s [-f] [-v] [-m]\n"
 "\n"
 "  -f            Use FIFO scheduling instead of weighted vtime scheduling\n"
 "  -v            Print libbpf debug messages\n"
+"  -m            Set the memory threshold (default 8000.0)\n"
 "  -h            Display this help and exit\n";
 
-#define MEMORY_THRESHOLD 10000.0
+#define MEMORY_THRESHOLD 8000.0
 
 static bool verbose;
 static volatile int exit_req;
@@ -116,20 +118,32 @@ int main(int argc, char **argv)
 	struct bpf_link *link;
 	__u32 opt;
 	__u64 ecode;
-
+	const __s64 max_cpus_allowed = get_nprocs_conf() > 1 ? get_nprocs_conf() : 1;
+	double memory_threshold = MEMORY_THRESHOLD;
 	libbpf_set_print(libbpf_print_fn);
 	signal(SIGINT, sigint_handler);
 	signal(SIGTERM, sigint_handler);
 restart:
 	skel = SCX_OPS_OPEN(jellybean_ops, scx_jellybean);
-	skel->bss->throttled = false;
-	while ((opt = getopt(argc, argv, "fvh")) != -1) {
+	skel->bss->cpus_allowed = max_cpus_allowed;
+
+	while ((opt = getopt(argc, argv, "fvmh")) != -1) {
 		switch (opt) {
 		case 'f':
 			skel->rodata->fifo_sched = true;
 			break;
 		case 'v':
 			verbose = true;
+			break;
+		case 'm':
+			if (sscanf(optarg, "%lf", &memory_threshold) != 1) {
+				fprintf(stderr, "Invalid memory threshold: %s\n", optarg);
+				return 1;
+			}
+			if (memory_threshold < 0) {
+				fprintf(stderr, "Memory threshold must be non-negative\n");
+				return 1;
+			}
 			break;
 		default:
 			fprintf(stderr, help_fmt, basename(argv[0]));
@@ -144,28 +158,24 @@ restart:
 	ssize_t last_byte = 0;
 	ssize_t prev_byte = -1;
 	double memory = 0;
-	bool throttled = false;
-	ssize_t history = 0;
 
 	for (__u64 i=0; !exit_req && !UEI_EXITED(skel, uei); i++) {
 		if(i%4==0){
 		// if(true){
 			__u64 stats[5];
 			read_stats(skel, stats);
-			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx memory=%lf throttled=%s\n",
-						  stats[0],   stats[1],  stats[2], 	  stats[3],    stats[4],   memory,       skel->bss->throttled ? "true" : "false");
+			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx memory=%lf max_be_cpus=%ld\n",
+						  stats[0],   stats[1],  stats[2], 	  stats[3],    stats[4],   memory,       skel->bss->cpus_allowed);
 			fflush(stdout);
 		}
 		double result = get_memory_from_csv("/tmp/memory.log", &last_byte);
 		if(prev_byte != last_byte && result != inf)
 			memory = result;
 		prev_byte = last_byte;
-		if(memory > MEMORY_THRESHOLD){
-			history = 100;
-			skel->bss->throttled = throttled = true;
-		}else if(throttled){
-			if(history) history--;
-			else skel->bss->throttled = throttled = false;
+		if(memory > memory_threshold){
+			skel->bss->cpus_allowed = skel->bss->cpus_allowed > 1 ? skel->bss->cpus_allowed - 1 : 1;
+		}else{
+			skel->bss->cpus_allowed = skel->bss->cpus_allowed < max_cpus_allowed ? skel->bss->cpus_allowed + 1 : max_cpus_allowed;
 		}
 		usleep(5000);
 	}

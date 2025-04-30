@@ -12,7 +12,7 @@
 char _license[] SEC("license") = "GPL";
 
 const volatile bool fifo_sched;
-volatile bool throttled;
+volatile s64 cpus_allowed;
 volatile s64 batches;
 
 static u64 vtime_now;
@@ -100,7 +100,7 @@ void BPF_STRUCT_OPS(jellybean_dispatch, s32 cpu, struct task_struct *prev)
 
 	if (!scx_bpf_dsq_move_to_local(SHARED_DSQ))
 	{
-		if (!throttled || cpu < MAX_CPUS)
+		if (cpu < cpus_allowed)
 		{
 			scx_bpf_dsq_move_to_local(BATCH_DSQ);
 		}
