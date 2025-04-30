@@ -28,7 +28,7 @@ const char help_fmt[] =
 "  -m            Set the memory threshold (default 8000.0)\n"
 "  -h            Display this help and exit\n";
 
-#define MEMORY_THRESHOLD 8000.0
+#define MEMORY_THRESHOLD 1000000.0
 
 static bool verbose;
 static volatile int exit_req;
@@ -48,10 +48,10 @@ static void sigint_handler(int simple)
 static void read_stats(struct scx_jellybean *skel, __u64 *stats)
 {
 	int nr_cpus = libbpf_num_possible_cpus();
-	__u64 cnts[5][nr_cpus];
+	__u64 cnts[6][nr_cpus];
 	__u32 idx;
 
-	memset(stats, 0, sizeof(stats[0]) * 5);
+	memset(stats, 0, sizeof(stats[0]) * 6);
 
 	for (idx = 0; idx < 3; idx++) {
 		int ret, cpu;
@@ -63,7 +63,7 @@ static void read_stats(struct scx_jellybean *skel, __u64 *stats)
 		for (cpu = 0; cpu < nr_cpus; cpu++)
 			stats[idx] += cnts[idx][cpu];
 	}
-	for (idx = 3; idx < 5; idx++) {
+	for (idx = 3; idx < 6; idx++) {
 		int ret, cpu;
 
 		ret = bpf_map_lookup_elem(bpf_map__fd(skel->maps.stats),
@@ -162,10 +162,10 @@ restart:
 	for (__u64 i=0; !exit_req && !UEI_EXITED(skel, uei); i++) {
 		if(i%4==0){
 		// if(true){
-			__u64 stats[5];
+			__u64 stats[6];
 			read_stats(skel, stats);
-			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx memory=%lf max_be_cpus=%ld\n",
-						  stats[0],   stats[1],  stats[2], 	  stats[3],    stats[4],   memory,       skel->bss->cpus_allowed);
+			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx mask_other=%llx memory=%lf max_be_cpus=%ld\n",
+						  stats[0],   stats[1],  stats[2], 	  stats[3],    stats[4],       stats[5],   memory,       skel->bss->cpus_allowed);
 			fflush(stdout);
 		}
 		double result = get_memory_from_csv("/tmp/memory.log", &last_byte);

@@ -7,7 +7,6 @@
 #include <scx/common.bpf.h>
 
 #define SCHED_BATCH 3
-#define SCHED_DEADLINE 6
 
 char _license[] SEC("license") = "GPL";
 
@@ -27,7 +26,7 @@ struct
 	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
 	__uint(key_size, sizeof(u32));
 	__uint(value_size, sizeof(u64));
-	__uint(max_entries, 5);
+	__uint(max_entries, 6);
 } stats SEC(".maps");
 
 static void stat_inc(u32 idx)
@@ -113,9 +112,13 @@ void BPF_STRUCT_OPS(jellybean_running, struct task_struct *p)
 	{
 		stat_set(3, 1);
 	}
-	else
+	else if (bpf_strncmp(p->comm, TASK_COMM_LEN, "lc") == 0)
 	{
 		stat_set(4, 1);
+	}
+	else
+	{
+		stat_set(5, 1);
 	}
 	if (fifo_sched)
 		return;
@@ -129,9 +132,13 @@ void BPF_STRUCT_OPS(jellybean_stopping, struct task_struct *p, bool runnable)
 	{
 		stat_set(3, 0);
 	}
-	else
+	else if (bpf_strncmp(p->comm, TASK_COMM_LEN, "lc") == 0)
 	{
 		stat_set(4, 0);
+	}
+	else
+	{
+		stat_set(5, 0);
 	}
 	if (fifo_sched)
 		return;
