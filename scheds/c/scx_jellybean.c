@@ -28,7 +28,7 @@ const char help_fmt[] =
 "  -m            Set the memory threshold (default 8000.0)\n"
 "  -h            Display this help and exit\n";
 
-#define MEMORY_THRESHOLD 1000000.0
+#define MEMORY_THRESHOLD 8000.0
 
 static bool verbose;
 static volatile int exit_req;
@@ -101,9 +101,9 @@ double get_memory_from_csv(const char *path, ssize_t *last_byte) {
 				}
 				token = strtok_r(NULL, ",", &saveptr);
 			}
-			if (columns != 29) {
-				result = 0;
-			}
+			// if (columns != 29) {
+			// 	result = 0;
+			// }
 			free(line);
 		}
 		fclose(file);
@@ -160,8 +160,8 @@ restart:
 	double memory = 0;
 
 	for (__u64 i=0; !exit_req && !UEI_EXITED(skel, uei); i++) {
-		if(i%4==0){
-		// if(true){
+		// if(i%4==0){
+		if(true){
 			__u64 stats[6];
 			read_stats(skel, stats);
 			printf("local=%llu global=%llu batch=%llu mask_be=%llx mask_lc=%llx mask_other=%llx memory=%lf max_be_cpus=%ld\n",
@@ -177,7 +177,7 @@ restart:
 		}else{
 			skel->bss->cpus_allowed = skel->bss->cpus_allowed < max_cpus_allowed ? skel->bss->cpus_allowed + 1 : max_cpus_allowed;
 		}
-		usleep(5000);
+		usleep(10000);
 	}
 
 	bpf_link__destroy(link);
